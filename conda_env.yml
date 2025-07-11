@@ -1,0 +1,14 @@
+name: nds-project
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - scipy  
+  - notebook
+  - ipykernel
+  - matplotlib
+  - pip
+  - pip:
+      - jupyter-black
