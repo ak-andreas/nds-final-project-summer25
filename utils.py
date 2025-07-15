@@ -5,8 +5,13 @@ import json
 import utils as U
 import logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import logging
 
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def get_npy_metadata(file_path):
@@ -148,3 +153,105 @@ def extract_and_save_metadata(npy_dir="./dff_data_rf", output_filename="metadata
                 logging.error(f"Error removing file {f}: {e}")
     logging.info("\n--- Metadata extraction and saving completed ---")
     return output_path
+
+
+
+# --- Configuration for Logging ---
+# It's good practice to set up a logger for your library
+# This allows the user of the library to control the logging level and output.
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def plot_max_projection(data, save_path=None):
+    """
+    Visualizes the maximum activity projection image from the data dictionary.
+
+    Args:
+        data (dict): The dictionary containing the dataset, expected to have a 'max_projection' key.
+        save_path (str, optional): If provided, saves the figure to this path instead of showing it. Defaults to None.
+    """
+    logging.info("Attempting to visualize maximum activity projection.")
+    
+    # Safely get the max_projection image from the data dictionary
+    max_projection = data.get("max_projection")
+    if max_projection is None:
+        logging.warning("'max_projection' not found in the provided data dictionary. Skipping plot.")
+        return
+
+    try:
+        plt.figure(figsize=(6, 6))
+        plt.imshow(max_projection, cmap="gray")
+        plt.title("Maximum Activity Projection")
+        plt.colorbar(label="Pixel Intensity")
+        plt.axis("off")
+        
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight', dpi=300)
+            logging.info(f"Maximum projection plot saved to {save_path}")
+            plt.close() # Close the figure to prevent it from displaying in a notebook
+        else:
+            plt.show()
+            
+    except Exception as e:
+        logging.error(f"An error occurred while plotting max projection: {e}")
+        plt.close()
+
+
+def plot_stim_frames(data, indices_to_display=None, num_frames=5, save_path=None):
+    """
+    Visualizes a selection of stimulus frames from the data dictionary.
+
+    Args:
+        data (dict): The dictionary containing the dataset, expected to have a 'stim' key.
+        indices_to_display (list, optional): A list of specific frame indices to display. 
+                                            If None, random frames will be chosen. Defaults to None.
+        num_frames (int, optional): The number of random frames to display if indices_to_display is None. Defaults to 5.
+        save_path (str, optional): If provided, saves the figure to this path instead of showing it. Defaults to None.
+    """
+    logging.info("Attempting to visualize stimulus frames.")
+    
+    # Safely get the stimulus frames from the data dictionary
+    stim_frames = data.get("stim")
+    if stim_frames is None:
+        logging.warning("'stim' (stimulus frames) not found in the provided data dictionary. Skipping plot.")
+        return
+
+    logging.info(f"Total stimulus frames available: {stim_frames.shape[0]}")
+    logging.info(f"Individual stimulus frame shape: {stim_frames.shape[1]}x{stim_frames.shape[2]}")
+
+    # Determine which frames to display
+    if indices_to_display is None:
+        # Choose random unique indices if none are provided
+        if stim_frames.shape[0] < num_frames:
+            logging.warning(f"Requested {num_frames} frames, but only {stim_frames.shape[0]} are available. Displaying all.")
+            indices_to_display = np.arange(stim_frames.shape[0])
+        else:
+            indices_to_display = np.random.choice(stim_frames.shape[0], num_frames, replace=False)
+            indices_to_display.sort() # Sort for a more ordered display
+    
+    num_to_display = len(indices_to_display)
+
+    try:
+        plt.figure(figsize=(num_to_display * 2.5, 3))
+        for i, idx in enumerate(indices_to_display):
+            if idx < stim_frames.shape[0]:
+                plt.subplot(1, num_to_display, i + 1)
+                plt.imshow(stim_frames[idx], cmap="gray")
+                plt.title(f"Stim Frame {idx}")
+                plt.axis("off")
+            else:
+                logging.warning(f"Skipping index {idx} as it is out of bounds for stim_frames array.")
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight', dpi=150)
+            logging.info(f"Stimulus frames plot saved to {save_path}")
+            plt.close()
+        else:
+            plt.show()
+
+    except Exception as e:
+        logging.error(f"An error occurred while plotting stimulus frames: {e}")
+        plt.close()
+
