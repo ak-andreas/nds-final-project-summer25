@@ -255,3 +255,51 @@ def plot_stim_frames(data, indices_to_display=None, num_frames=5, save_path=None
         logging.error(f"An error occurred while plotting stimulus frames: {e}")
         plt.close()
 
+
+
+def plot_preprocessing_comparison(raw_trace, processed_trace, time_vector, neuron_id, save_path=None):
+    """
+    Plots a single neuron's activity trace before and after preprocessing on separate subplots.
+
+    Args:
+        raw_trace (np.ndarray): The 1D array of the raw dF/F signal.
+        processed_trace (np.ndarray): The 1D array of the signal after preprocessing (e.g., filtering).
+        time_vector (np.ndarray): The 1D array of time points corresponding to the traces.
+        neuron_id (int or str): The identifier for the neuron being plotted.
+        save_path (str, optional): If provided, saves the figure to this path. Defaults to None.
+    """
+    logging.info(f"Plotting preprocessing comparison for neuron {neuron_id}.")
+    
+    try:
+        # Create a figure with two subplots, one for each trace, sharing the x-axis
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 8), sharex=True)
+        
+        fig.suptitle(f"Preprocessing Comparison for Neuron {neuron_id}", fontsize=16)
+
+        # Plot raw trace on the first subplot
+        ax1.plot(time_vector, raw_trace, label='Raw dF/F', color='gray', alpha=0.9)
+        ax1.set_title("Raw Signal")
+        ax1.set_ylabel("dF/F")
+        ax1.legend()
+        ax1.grid(True, linestyle='--', alpha=0.6)
+
+        # Plot processed trace on the second subplot
+        ax2.plot(time_vector, processed_trace, label='Processed dF/F', color='cornflowerblue', linewidth=1.5)
+        ax2.set_title("Processed Signal")
+        ax2.set_ylabel("dF/F")
+        ax2.set_xlabel("Time (s)")
+        ax2.legend()
+        ax2.grid(True, linestyle='--', alpha=0.6)
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to make room for suptitle
+        
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight', dpi=300)
+            logging.info(f"Preprocessing comparison plot saved to {save_path}")
+            plt.close()
+        else:
+            plt.show()
+
+    except Exception as e:
+        logging.error(f"An error occurred while plotting preprocessing comparison: {e}")
+        plt.close()
