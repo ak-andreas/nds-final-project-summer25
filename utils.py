@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import os
 import logging
 
+from scipy.linalg import svd
+
+
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -386,3 +389,317 @@ def plot_inference_comparison(dff_trace, inferred_spikes, time_vector, neuron_id
         plt.close()
     else:
         plt.show()
+        
+        
+import numpy as np
+import pandas as pd
+import scipy.optimize as opt
+import matplotlib.pyplot as plt
+from scipy.special import gammaln
+
+# Assume the following variables are pre-loaded and available in your environment
+# from the previous data filtering and spike inference steps:
+#
+# inferred_spikes:        (np.ndarray) Shape: (num_neurons, num_time_points)
+# stim_filtered:          (np.ndarray) Shape: (num_stim_frames, 16, 28)
+# stim_table_filtered_df: (pd.DataFrame) DataFrame with 'start_s' and 'end_s' columns
+# t_filtered:             (np.ndarray) Shape: (num_time_points,)
+
+# --- MLE Model Functions (from Coding Lab 5) ---
+
+def negloglike_lnp(w, c, s, dt=1.0, R=1.0):
+    """Implements the negative log-likelihood of the LNP model."""
+    w = w.ravel()
+    lin = w @ s
+    rates = np.exp(lin) * dt * R
+    
+    logL = np.dot(c, lin) - rates.sum() - gammaln(c + 1).sum()
+    return -logL
+
+def deriv_negloglike_lnp(w, c, s, dt=1.0, R=1.0):
+    """Implements the gradient of the negative log-likelihood."""
+    w = w.ravel()
+    lin = w @ s
+    rates = np.exp(lin) * dt * R
+    
+    grad = s @ (rates - c)
+    return grad
+
+# --- Refactored Data Preparation and Fitting Functions ---
+
+def bin_spikes_to_frames(inferred_spikes, t_filtered, stim_table_filtered_df):
+    """Bins continuous inferred spike data into counts per stimulus frame."""
+    print("Step 1: Binning inferred spikes...")
+    num_neurons = inferred_spikes.shape[0]
+    num_stim_frames = len(stim_table_filtered_df)
+    
+    bin_edges = np.concatenate([stim_table_filtered_df['start_s'].values, 
+                                [stim_table_filtered_df['end_s'].values[-1]]])
+    
+    binned_spikes = np.zeros((num_neurons, num_stim_frames))
+    for i in range(num_neurons):
+        counts, _ = np.histogram(t_filtered, bins=bin_edges, weights=inferred_spikes[i, :])
+        binned_spikes[i, :] = counts
+        
+    print(f"Binned spikes shape: {binned_spikes.shape}")
+    return binned_spikes
+
+def prepare_stimulus_matrix(stim_filtered):
+    """Flattens the stimulus frames into a 2D matrix."""
+    print("\nStep 2: Preparing stimulus matrix...")
+    num_stim_frames, stim_height, stim_width = stim_filtered.shape
+    num_pixels = stim_height * stim_width
+    
+    flattened_stim = stim_filtered.reshape(num_stim_frames, num_pixels).T
+    
+    print(f"Flattened stimulus shape: {flattened_stim.shape}")
+    return flattened_stim, stim_height, stim_width
+
+def fit_spatiotemporal_rf(neuron_spikes, flattened_stim, delta):
+    """Fits a spatio-temporal receptive field for a single neuron."""
+    num_pixels, _ = flattened_stim.shape
+    num_lags = len(delta)
+    w_hat_neuron = np.zeros((num_pixels, num_lags))
+
+    for j, lag in enumerate(delta):
+        if lag > 0:
+            S_lag = flattened_stim[:, :-lag]
+            C_lag = neuron_spikes[lag:]
+        else:
+            S_lag = flattened_stim
+            C_lag = neuron_spikes
+            
+        w0 = np.zeros(num_pixels)
+        res = opt.minimize(
+            fun=lambda w: negloglike_lnp(w, C_lag, S_lag),
+            x0=w0,
+            jac=lambda w: deriv_negloglike_lnp(w, C_lag, S_lag),
+            method="L-BFGS-B",
+            options={'disp': False}
+        )
+        w_hat_neuron[:, j] = res.x
+        
+    return w_hat_neuron
+
+def fit_all_neurons_rfs(binned_spikes, flattened_stim, delta):
+    """Fits receptive fields for all neurons."""
+    print("\nStep 3 & 4: Fitting spatio-temporal receptive fields for all neurons...")
+    num_neurons = binned_spikes.shape[0]
+    all_neuron_rfs = []
+
+    for i in range(num_neurons):
+        print(f"  Fitting Neuron {i+1}/{num_neurons}...")
+        neuron_spikes = binned_spikes[i, :]
+        w_hat = fit_spatiotemporal_rf(neuron_spikes, flattened_stim, delta)
+        all_neuron_rfs.append(w_hat)
+        
+    print("Fitting complete.")
+    return all_neuron_rfs
+
+def extract_spatial_rfs_svd(all_neuron_rfs, stim_height, stim_width):
+    """Separates spatial and temporal components using SVD."""
+    print("\nStep 5: Separating spatial and temporal components using SVD...")
+    all_spatial_rfs = []
+
+    for w_hat in all_neuron_rfs:
+        w_centered = w_hat - w_hat.mean(axis=1, keepdims=True)
+        U, _, _ = np.linalg.svd(w_centered, full_matrices=False)
+        spatial_component = U[:, 0].reshape(stim_height, stim_width)
+        all_spatial_rfs.append(spatial_component)
+        
+    print(f"SVD analysis complete. Extracted {len(all_spatial_rfs)} spatial receptive fields.")
+    return all_spatial_rfs
+
+def visualize_neuron_rf(neuron_id, spatiotemporal_rf, spatial_rf, delta):
+    """Visualizes the analysis results for a single neuron."""
+    print(f"\nVisualizing results for an example neuron (Neuron {neuron_id})...")
+    
+    # Perform SVD to get the temporal component for plotting
+    w_centered = spatiotemporal_rf - spatiotemporal_rf.mean(axis=1, keepdims=True)
+    _, _, Vt_ex = np.linalg.svd(w_centered, full_matrices=False)
+    temporal_rf = Vt_ex[0, :]
+    
+    # Correct sign for consistent visualization
+    if np.abs(np.min(spatial_rf)) > np.abs(np.max(spatial_rf)):
+        spatial_rf *= -1
+        temporal_rf *= -1
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    fig.suptitle(f"Example Analysis for Neuron {neuron_id}", fontsize=16)
+
+    stim_height, stim_width = spatial_rf.shape
+    
+    # 1. Spatio-temporal RF at max energy lag
+    lag_max_energy = np.argmax(np.sum(spatiotemporal_rf**2, axis=0))
+    vlim = np.max(np.abs(spatiotemporal_rf[:, lag_max_energy]))
+    axes[0].imshow(spatiotemporal_rf[:, lag_max_energy].reshape(stim_height, stim_width), 
+                   cmap='bwr', vmin=-vlim, vmax=vlim)
+    axes[0].set_title(f"Spatio-temporal RF (Lag {lag_max_energy})")
+    axes[0].axis('off')
+
+    # 2. Separated spatial component
+    vlim_spatial = np.max(np.abs(spatial_rf))
+    axes[1].imshow(spatial_rf, cmap='bwr', vmin=-vlim_spatial, vmax=vlim_spatial)
+    axes[1].set_title("Separated Spatial RF")
+    axes[1].axis('off')
+
+    # 3. Separated temporal component
+    axes[2].plot(delta, temporal_rf, 'o-')
+    axes[2].axhline(0, color='grey', linestyle='--')
+    axes[2].set_title("Separated Temporal Kernel")
+    axes[2].set_xlabel("Lag (frames)")
+    axes[2].set_ylabel("Weight")
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.show()
+    
+    
+def extract_all_temporal_kernels(all_rfs_spatiotemporal):
+    """
+    Extracts the primary temporal kernel for every neuron using SVD.
+
+    This function also corrects for the sign ambiguity of SVD by ensuring
+    the main lobe of the corresponding spatial RF is positive.
+
+    Args:
+        all_rfs_spatiotemporal (list of np.ndarray): 
+            A list where each element is a (num_pixels, num_lags) spatio-temporal RF.
+
+    Returns:
+        np.ndarray: A (num_neurons, num_lags) array of all temporal kernels.
+    """
+    print("Extracting temporal kernels for all neurons...")
+    all_temporal_kernels = []
+
+    for w_hat in all_rfs_spatiotemporal:
+        # Center the data
+        w_centered = w_hat - w_hat.mean(axis=1, keepdims=True)
+        
+        # Perform SVD
+        U, _, Vt = svd(w_centered, full_matrices=False)
+        
+        # Get the primary spatial and temporal components
+        spatial_component = U[:, 0]
+        temporal_component = Vt[0, :]
+        
+        # --- Sign Correction ---
+        # Check if the main spatial lobe (peak absolute value) is negative.
+        # If so, flip both components to maintain consistency.
+        if np.abs(np.min(spatial_component)) > np.abs(np.max(spatial_component)):
+            temporal_component *= -1
+            
+        all_temporal_kernels.append(temporal_component)
+        
+    print("Extraction complete.")
+    return np.array(all_temporal_kernels)
+
+
+
+def extract_all_spatial_kernels(all_rfs_spatiotemporal, stim_height, stim_width):
+    """
+    Extracts the primary spatial kernel for every neuron using SVD.
+    Also corrects for sign ambiguity.
+
+    Args:
+        all_rfs_spatiotemporal (list of np.ndarray): 
+            List of (num_pixels, num_lags) spatio-temporal RFs.
+        stim_height (int): The height of the stimulus images.
+        stim_width (int): The width of the stimulus images.
+
+    Returns:
+        list of np.ndarray: A list of 2D spatial kernels.
+    """
+    print("Extracting spatial kernels for all neurons...")
+    all_spatial_kernels = []
+
+    for w_hat in all_rfs_spatiotemporal:
+        w_centered = w_hat - w_hat.mean(axis=1, keepdims=True)
+        U, _, _ = svd(w_centered, full_matrices=False)
+        spatial_component = U[:, 0].reshape(stim_height, stim_width)
+
+        # Sign Correction: Ensure the main lobe is positive (excitatory)
+        if np.abs(np.min(spatial_component)) > np.abs(np.max(spatial_component)):
+            spatial_component *= -1
+
+        all_spatial_kernels.append(spatial_component)
+
+    print("Extraction complete.")
+    return all_spatial_kernels
+
+def visualize_all_temporal_kernels(all_temporal_kernels, delta):
+    """
+    Visualizes all temporal kernels together as a heatmap.
+
+    Args:
+        all_temporal_kernels (np.ndarray): 
+            A (num_neurons, num_lags) array of temporal kernels.
+        delta (list or np.ndarray): 
+            The time lags corresponding to the columns of the kernel array.
+    """
+    print("Generating population temporal kernel heatmap...")
+    
+    # Normalize each kernel to have a peak absolute value of 1 for better visualization
+    max_abs_vals = np.max(np.abs(all_temporal_kernels), axis=1, keepdims=True)
+    # Avoid division by zero for silent neurons
+    max_abs_vals[max_abs_vals == 0] = 1
+    normalized_kernels = all_temporal_kernels / max_abs_vals
+
+    fig, ax = plt.subplots(figsize=(8, 12))
+    
+    # Use imshow to create the heatmap
+    im = ax.imshow(normalized_kernels, cmap='bwr', aspect='auto', interpolation='nearest')
+    
+    # Add a colorbar
+    cbar = fig.colorbar(im, ax=ax, orientation='vertical', pad=0.05)
+    cbar.set_label("Normalized Weight")
+    
+    # Set labels and title
+    ax.set_title("Temporal Kernels for All Neurons")
+    ax.set_xlabel("Lag (frames)")
+    ax.set_ylabel("Neuron ID")
+    
+    # Set the x-axis ticks to match your lags
+    ax.set_xticks(np.arange(len(delta)))
+    ax.set_xticklabels(delta)
+    
+    plt.tight_layout()
+    plt.show()
+    
+    
+def visualize_all_spatial_rfs(all_spatial_rfs, background_image=None, threshold_frac=0.6):
+    """
+    Visualizes all spatial receptive fields by overlaying their contours.
+
+    Args:
+        all_spatial_rfs (list of np.ndarray): List of 2D spatial RFs.
+        background_image (np.ndarray, optional): A 2D image to plot contours on.
+        threshold_frac (float, optional): Fraction of the max value to set the contour level.
+    """
+    print("Generating population spatial receptive field contour plot...")
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Display the background image if provided
+    if background_image is not None:
+        ax.imshow(background_image, cmap='gray', alpha=0.5)
+    else:
+        # If no background, set the limits manually based on RF shape
+        ax.set_xlim(0, all_spatial_rfs[0].shape[1])
+        ax.set_ylim(all_spatial_rfs[0].shape[0], 0)
+        ax.set_aspect('equal')
+        ax.set_facecolor('black')
+
+    # Loop through each neuron's spatial RF
+    for rf in all_spatial_rfs:
+        # Find positive (excitatory) contours
+        max_val = rf.max()
+        if max_val > 1e-6: # Check for non-trivial positive values
+            ax.contour(rf, levels=[max_val * threshold_frac], colors='red', linewidths=1.0)
+
+        # Find negative (inhibitory) contours
+        min_val = rf.min()
+        if min_val < -1e-6: # Check for non-trivial negative values
+            ax.contour(rf, levels=[min_val * threshold_frac], colors='blue', linewidths=1.0)
+
+    ax.set_title("Population Spatial Receptive Fields (Red=Excitatory, Blue=Inhibitory)")
+    ax.axis('off')
+    plt.show()
