@@ -1,0 +1,155 @@
+[
+    {
+        "file_path": "./dff_data_rf/stim.npy",
+        "file_name": "stim.npy",
+        "extension": ".npy",
+        "file_size_bytes": 4032128,
+        "creation_time": "2025-07-10T06:40:06.854373",
+        "modification_time": "2025-07-10T06:40:06.854373",
+        "array_type": "<class 'numpy.ndarray'>",
+        "array_dtype": "uint8",
+        "array_shape": [
+            9000,
+            16,
+            28
+        ],
+        "array_ndim": 3,
+        "array_itemsize_bytes": 1,
+        "array_nbytes": 4032000,
+        "is_structured_array": false,
+        "structured_array_fields": []
+    },
+    {
+        "file_path": "./dff_data_rf/roi_masks.npy",
+        "file_name": "roi_masks.npy",
+        "extension": ".npy",
+        "file_size_bytes": 49545344,
+        "creation_time": "2025-07-10T06:40:06.751738",
+        "modification_time": "2025-07-10T06:40:06.751738",
+        "array_type": "<class 'numpy.ndarray'>",
+        "array_dtype": "uint8",
+        "array_shape": [
+            189,
+            512,
+            512
+        ],
+        "array_ndim": 3,
+        "array_itemsize_bytes": 1,
+        "array_nbytes": 49545216,
+        "is_structured_array": false,
+        "structured_array_fields": []
+    },
+    {
+        "file_path": "./dff_data_rf/dff.npy",
+        "file_name": "dff.npy",
+        "extension": ".npy",
+        "file_size_bytes": 80111936,
+        "creation_time": "2025-07-10T06:40:06.595970",
+        "modification_time": "2025-07-10T06:40:06.595970",
+        "array_type": "<class 'numpy.ndarray'>",
+        "array_dtype": "float32",
+        "array_shape": [
+            189,
+            105968
+        ],
+        "array_ndim": 2,
+        "array_itemsize_bytes": 4,
+        "array_nbytes": 80111808,
+        "is_structured_array": false,
+        "structured_array_fields": []
+    },
+    {
+        "file_path": "./dff_data_rf/t.npy",
+        "file_name": "t.npy",
+        "extension": ".npy",
+        "file_size_bytes": 847872,
+        "creation_time": "2025-07-10T06:40:06.870804",
+        "modification_time": "2025-07-10T06:40:06.870804",
+        "array_type": "<class 'numpy.ndarray'>",
+        "array_dtype": "float64",
+        "array_shape": [
+            105968
+        ],
+        "array_ndim": 1,
+        "array_itemsize_bytes": 8,
+        "array_nbytes": 847744,
+        "is_structured_array": false,
+        "structured_array_fields": []
+    },
+    {
+        "file_path": "./dff_data_rf/running_speed.npy",
+        "file_name": "running_speed.npy",
+        "extension": ".npy",
+        "file_size_bytes": 1695616,
+        "creation_time": "2025-07-10T06:40:06.839675",
+        "modification_time": "2025-07-10T06:40:06.839675",
+        "array_type": "<class 'numpy.ndarray'>",
+        "array_dtype": "float64",
+        "array_shape": [
+            2,
+            105968
+        ],
+        "array_ndim": 2,
+        "array_itemsize_bytes": 8,
+        "array_nbytes": 1695488,
+        "is_structured_array": false,
+        "structured_array_fields": []
+    },
+    {
+        "file_path": "./dff_data_rf/stim_epoch_table.npy",
+        "file_name": "stim_epoch_table.npy",
+        "extension": ".npy",
+        "file_size_bytes": 435,
+        "creation_time": "2025-07-10T06:40:06.862569",
+        "modification_time": "2025-07-10T06:40:06.862569",
+        "array_type": "<class 'numpy.ndarray'>",
+        "array_dtype": "object",
+        "array_shape": [
+            7,
+            3
+        ],
+        "array_ndim": 2,
+        "array_itemsize_bytes": 8,
+        "array_nbytes": 168,
+        "is_structured_array": false,
+        "structured_array_fields": []
+    },
+    {
+        "file_path": "./dff_data_rf/max_projection.npy",
+        "file_name": "max_projection.npy",
+        "extension": ".npy",
+        "file_size_bytes": 524416,
+        "creation_time": "2025-07-10T06:40:06.616164",
+        "modification_time": "2025-07-10T06:40:06.616164",
+        "array_type": "<class 'numpy.ndarray'>",
+        "array_dtype": "uint16",
+        "array_shape": [
+            512,
+            512
+        ],
+        "array_ndim": 2,
+        "array_itemsize_bytes": 2,
+        "array_nbytes": 524288,
+        "is_structured_array": false,
+        "structured_array_fields": []
+    },
+    {
+        "file_path": "./dff_data_rf/stim_table.npy",
+        "file_name": "stim_table.npy",
+        "extension": ".npy",
+        "file_size_bytes": 213248,
+        "creation_time": "2025-07-10T06:40:06.863725",
+        "modification_time": "2025-07-10T06:40:06.863725",
+        "array_type": "<class 'numpy.ndarray'>",
+        "array_dtype": "int64",
+        "array_shape": [
+            8880,
+            3
+        ],
+        "array_ndim": 2,
+        "array_itemsize_bytes": 8,
+        "array_nbytes": 213120,
+        "is_structured_array": false,
+        "structured_array_fields": []
+    }
+]
