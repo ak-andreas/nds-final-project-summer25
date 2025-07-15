@@ -303,3 +303,86 @@ def plot_preprocessing_comparison(raw_trace, processed_trace, time_vector, neuro
     except Exception as e:
         logging.error(f"An error occurred while plotting preprocessing comparison: {e}")
         plt.close()
+
+
+def calculate_sampling_rate(time_vector):
+    """Calculates the sampling rate from a time vector."""
+    if len(time_vector) < 2:
+        raise ValueError("Time vector must have at least two elements to calculate sampling rate.")
+    # Calculate the average difference between consecutive time points
+    fs = 1.0 / np.mean(np.diff(time_vector))
+    return fs
+
+def simple_deconvolution(c, tau, fs):
+    """
+    Performs simple deconvolution on a calcium trace based on a first-order
+    autoregressive model: c_t = gamma * c_{t-1} + s_t.
+
+    This function estimates the spikes 's_t' by inverting the model.
+
+    Args:
+        c (np.ndarray): A 1D array representing the calcium trace (dF/F).
+        tau (float): The decay time constant of the calcium indicator in seconds.
+                     For GCaMP6f, a value around 0.5-0.7 is reasonable.
+        fs (float): The sampling frequency of the recording in Hz.
+
+    Returns:
+        np.ndarray: A 1D array representing the estimated spike train.
+    """
+    # 1. Calculate the autoregression coefficient 'gamma'
+    gamma = 1 - (1 / (tau * fs))
+    
+    # 2. Estimate spikes by inverting the AR(1) model
+    # s_t = c_t - gamma * c_{t-1}
+    # We can do this efficiently for the whole array.
+    # c[1:] corresponds to c_t for t > 0
+    # c[:-1] corresponds to c_{t-1} for t > 0
+    s = c[1:] - gamma * c[:-1]
+    
+    # 3. Enforce non-negativity constraint (spikes cannot be negative)
+    s[s < 0] = 0
+    
+    # The resulting spike train is one element shorter than the calcium trace.
+    # We can pad it with a zero at the beginning to match the original length.
+    s = np.insert(s, 0, 0)
+    
+    return s
+
+def plot_inference_comparison(dff_trace, inferred_spikes, time_vector, neuron_id, save_path=None):
+    """
+    Plots the dF/F trace and the inferred spikes for a single neuron.
+
+    Args:
+        dff_trace (np.ndarray): The preprocessed dF/F signal.
+        inferred_spikes (np.ndarray): The inferred spike train from deconvolution.
+        time_vector (np.ndarray): The corresponding time points.
+        neuron_id (int or str): The identifier for the neuron.
+        save_path (str, optional): Path to save the figure. Defaults to None.
+    """
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 8), sharex=True,
+                                  gridspec_kw={'height_ratios': [2, 1]})
+    
+    fig.suptitle(f"Spike Inference for Neuron {neuron_id}", fontsize=16)
+
+    # Plot dF/F trace
+    ax1.plot(time_vector, dff_trace, color='cornflowerblue', label='dF/F Trace')
+    ax1.set_title("Preprocessed Calcium Signal")
+    ax1.set_ylabel("dF/F")
+    ax1.grid(True, linestyle='--', alpha=0.6)
+    ax1.legend()
+
+    # Plot inferred spikes
+    ax2.plot(time_vector, inferred_spikes, color='coral', label='Inferred Spikes')
+    ax2.set_title("Inferred Neural Activity")
+    ax2.set_xlabel("Time (s)")
+    ax2.set_ylabel("Activity (a.u.)")
+    ax2.grid(True, linestyle='--', alpha=0.6)
+    ax2.legend()
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
+    else:
+        plt.show()
