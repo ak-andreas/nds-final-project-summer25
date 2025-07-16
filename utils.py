@@ -25,6 +25,20 @@ import glob
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
+
+# load data
+def load_data(path="."):
+    def array2df(d, key, cols):
+        d[key] = pd.DataFrame(d[key], columns=cols)
+
+    data = np.load(path + "/dff_data_rf.npz", allow_pickle=True)
+    data = dict(data)
+    array2df(data, "stim_table", ["frame", "start", "end"])
+    array2df(data, "stim_epoch_table", ["start", "end", "stimulus"])
+
+    return data
+
+
 def find_latest_file(directory, file_pattern="*.npz"):
     """
     Finds the most recently created file in a directory matching a pattern.
@@ -1058,3 +1072,67 @@ def plot_retinotopic_map(roi_centroids, rf_centers, background_image, axis_to_ma
     plt.show()
 
 
+
+def visualize_all_strfs(all_rfs_spatiotemporal, delta, stim_dims, neurons_to_plot=None):
+    """
+    Visualizes the full spatio-temporal receptive fields for a population of neurons.
+
+    Creates a grid where each row is a neuron and each column is a time lag.
+
+    Args:
+        all_rfs_spatiotemporal (list of np.ndarray): 
+            A list of (num_pixels, num_lags) STRFs for all neurons.
+        delta (list or np.ndarray): 
+            The time lags used in the analysis.
+        stim_dims (tuple): 
+            The (height, width) of the stimulus.
+        neurons_to_plot (list or range, optional): 
+            A list of neuron indices to plot. If None, all neurons are plotted.
+            This is useful for plotting a subset if the population is large.
+    """
+    print("Generating population spatio-temporal receptive field grid...")
+
+    if neurons_to_plot is None:
+        neurons_to_plot = range(len(all_rfs_spatiotemporal))
+    
+    num_neurons_to_plot = len(neurons_to_plot)
+    num_lags = len(delta)
+    stim_h, stim_w = stim_dims
+
+    # Create a figure with a subplot for each neuron and each lag
+    fig, axes = plt.subplots(num_neurons_to_plot, num_lags, 
+                             figsize=(num_lags * 2, num_neurons_to_plot * 2))
+    
+    # Handle the case of plotting a single neuron
+    if num_neurons_to_plot == 1:
+        axes = np.expand_dims(axes, axis=0)
+
+    fig.suptitle("Spatio-Temporal Receptive Fields for All Neurons", fontsize=16, y=1.0)
+
+    # Find a global color scale limit for consistent visualization
+    global_max = max(np.max(np.abs(all_rfs_spatiotemporal[i])) for i in neurons_to_plot)
+
+    # Loop through the selected neurons and lags
+    for row_idx, neuron_idx in enumerate(neurons_to_plot):
+        strf = all_rfs_spatiotemporal[neuron_idx]
+        
+        for col_idx, lag in enumerate(delta):
+            ax = axes[row_idx, col_idx]
+            
+            # Get the spatial RF at the current lag
+            rf_at_lag = strf[:, col_idx].reshape(stim_h, stim_w)
+            
+            # Plot the RF
+            ax.imshow(rf_at_lag, cmap='bwr', vmin=-global_max, vmax=global_max)
+            ax.axis('off')
+            
+            # Add titles for the first row (lags)
+            if row_idx == 0:
+                ax.set_title(f"Lag {lag}")
+        
+        # Add labels for the rows (neuron IDs)
+        axes[row_idx, 0].text(-5, stim_h / 2, f"Neuron {neuron_idx}", 
+                              va='center', ha='right', fontsize=10, rotation=90)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.98])
+    plt.show()
