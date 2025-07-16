@@ -12,6 +12,8 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import matplotlib.patheffects as PathEffects
+
 
 from scipy.linalg import svd
 from scipy.ndimage import center_of_mass
@@ -895,19 +897,17 @@ def filter_stimulus_data(data, t_filtered):
     
     return stim_filtered, stim_table_filtered_df
 
-
-
-    
-def plot_roi_masks_on_image(roi_masks, background_image):
+def plot_roi_masks_on_image(roi_masks, background_image, roi_centroids):
     """
-    Overlays the contours of all ROI masks on a background image.
+    Overlays the contours and index of all ROI masks on a background image.
 
     Args:
         roi_masks (np.ndarray): A 3D array of shape (num_neurons, height, width).
         background_image (np.ndarray): The 2D max activity projection image.
+        roi_centroids (np.ndarray): A 2D array of (row, col) centroid coordinates.
     """
-    print("Visualizing all ROI mask outlines...")
-    fig, ax = plt.subplots(figsize=(10, 10))
+    print("Visualizing all ROI mask outlines and indices...")
+    fig, ax = plt.subplots(figsize=(12, 12))
 
     # Display the background image
     ax.imshow(background_image, cmap='gray')
@@ -915,16 +915,26 @@ def plot_roi_masks_on_image(roi_masks, background_image):
     # Generate a set of distinct colors for the contours
     colors = plt.cm.get_cmap('gist_rainbow', roi_masks.shape[0])
 
-    # Loop through each neuron's ROI mask and plot its contour
+    # Loop through each neuron's ROI mask
     for i in range(roi_masks.shape[0]):
-        # The contour function finds the boundary of the mask
+        # Plot the contour of the mask
         ax.contour(roi_masks[i, :, :], levels=[0.5], colors=[colors(i)], linewidths=1.5)
+        
+        # Get the centroid coordinates for placing the text
+        # Centroid is (row, col), which corresponds to (y, x) in plotting
+        y, x = roi_centroids[i]
+        
+        # Add the neuron index as text.
+        # We add a path effect (a simple outline) to make the text readable
+        # against any background color.
+        txt = ax.text(x, y, str(i), color='white', fontsize=8, ha='center', va='center')
+        txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='black')])
 
-    ax.set_title("Anatomical Map of All Neuron ROIs")
+
+    ax.set_title("Anatomical Map of All Neuron ROIs with Indices")
     ax.set_aspect('equal')
     ax.axis('off')
     plt.show()
-
 
 def calculate_roi_centroids(roi_masks):
     """
@@ -946,8 +956,7 @@ def calculate_roi_centroids(roi_masks):
         centroids[i, :] = center_of_mass(roi_masks[i, :, :])
         
     print("ROI centroid calculation complete.")
-    return centroids
-
+    return centroids    
 
 def calculate_rf_centers(all_spatial_rfs):
     """
@@ -974,7 +983,6 @@ def calculate_rf_centers(all_spatial_rfs):
         
     print("RF center calculation complete.")
     return np.array(rf_centers)
-
 
 def plot_retinotopic_map(roi_centroids, rf_centers, background_image, axis_to_map='x'):
     """
@@ -1023,3 +1031,5 @@ def plot_retinotopic_map(roi_centroids, rf_centers, background_image, axis_to_ma
     ax.axis('off')
     
     plt.show()
+
+
