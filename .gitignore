@@ -1,0 +1,48 @@
+# Byte‑compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VSCode / IDE settings
+.vscode/
+.idea/
+
+# macOS Finder files
+.DS_Store
+
+# Python virtual environments
+venv/
+env/
+.env/
+.venv/
+
+# Logs
+*.log
+
+# Data files (large .npy / .npz arrays)
+data/*.npy
+data/*.npz
+
+# Intermediate outputs & figures
+*.png
+*.jpg
+*.svg
+*.pdf
+
+# Downsampled or derived data
+dff_data_rf.npz
+dff_ds*
+t_ds*
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Misc
+*.egg-info/
+dist/
+build/
