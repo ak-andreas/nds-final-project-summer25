@@ -18,10 +18,35 @@ import matplotlib.patheffects as PathEffects
 from scipy.linalg import svd
 from scipy.ndimage import center_of_mass
 
+import os
+import glob
+
 
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
+def find_latest_file(directory, file_pattern="*.npz"):
+    """
+    Finds the most recently created file in a directory matching a pattern.
+
+    Args:
+        directory (str): The path to the directory to search.
+        file_pattern (str): The pattern of files to look for (e.g., '*.npz').
+
+    Returns:
+        str: The full path to the most recent file.
+    
+    Raises:
+        FileNotFoundError: If no files matching the pattern are found.
+    """
+    search_path = os.path.join(directory, file_pattern)
+    list_of_files = glob.glob(search_path)
+    
+    if not list_of_files:
+        raise FileNotFoundError(f"No files matching '{file_pattern}' found in '{directory}'")
+    
+    latest_file = max(list_of_files, key=os.path.getctime)
+    return latest_file
 
 def get_npy_metadata(file_path):
     """
