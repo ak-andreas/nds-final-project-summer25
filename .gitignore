@@ -22,9 +22,7 @@ env/
 # Logs
 *.log
 
-# Data files (large .npy / .npz arrays)
-data/*.npy
-data/*.npz
+
 
 # Intermediate outputs & figures
 *.png
