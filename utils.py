@@ -9,6 +9,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import logging
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 from scipy.linalg import svd
 
@@ -703,3 +706,190 @@ def visualize_all_spatial_rfs(all_spatial_rfs, background_image=None, threshold_
     ax.set_title("Population Spatial Receptive Fields (Red=Excitatory, Blue=Inhibitory)")
     ax.axis('off')
     plt.show()
+
+
+def visualize_stimulus_movie(stim_movie, title="Stimulus Movie", interval=50):
+    """
+    Creates and displays an animation of the stimulus movie.
+
+    Args:
+        stim_movie (np.ndarray): A 3D array of shape (num_frames, height, width).
+        title (str): The title for the plot.
+        interval (int): The delay between frames in milliseconds.
+    """
+    if stim_movie.ndim != 3:
+        print("Error: Input must be a 3D array (frames, height, width).")
+        return
+
+    num_frames = stim_movie.shape[0]
+    
+    fig, ax = plt.subplots(figsize=(7, 4))
+    plt.title(title)
+    ax.axis('off')
+
+    # Initialize the image plot with the first frame
+    # Use a grayscale colormap and set the limits for pixel values
+    img = ax.imshow(stim_movie[0, :, :], cmap='gray', vmin=np.min(stim_movie), vmax=np.max(stim_movie))
+
+    def update(frame_num):
+        # This function is called for each frame of the animation
+        img.set_data(stim_movie[frame_num, :, :])
+        ax.set_title(f"Stimulus Movie (Frame {frame_num}/{num_frames})")
+        return [img]
+
+    # Create the animation object
+    anim = FuncAnimation(fig, update, frames=num_frames, interval=interval, blit=True)
+
+    # Display the animation in the notebook
+    # Note: This may take a moment to render
+    plt.close(fig) # Close the static plot to only show the animation
+    return anim
+
+def preprocess_data(data):
+    """
+    Performs initial cleaning and preprocessing on the loaded data dictionary.
+    - Renames mislabelled columns in 'stim_epoch_table'.
+    - Converts time columns in 'stim_table' from ms to seconds.
+
+    Args:
+        data (dict): The raw data dictionary loaded from the .npz file.
+
+    Returns:
+        dict: The preprocessed data dictionary.
+    """
+    print("Performing initial data preprocessing...")
+
+    # --- Rename mislabelled columns in stim_epoch_table ---
+    # Make a copy to avoid modifying the original DataFrame in place
+    epoch_table = data['stim_epoch_table'].copy()
+    epoch_table = epoch_table.rename(
+        columns={
+            epoch_table.columns[0]: "stimulus",
+            epoch_table.columns[1]: "start_time",
+            epoch_table.columns[2]: "end_time",
+        }
+    )
+    data['stim_epoch_table'] = epoch_table
+
+    # --- Convert time columns in stim_table to seconds ---
+    stim_table = data['stim_table'].copy()
+    stim_table["start_s"] = stim_table["start"] / 1000.0
+    stim_table["end_s"] = stim_table["end"] / 1000.0
+    data['stim_table'] = stim_table
+    data['preprocessing_done'] = True  
+    print("Preprocessing complete.")
+    return data
+
+def filter_timeseries_by_epoch(data, stimulus_name='locally_sparse_noise'):
+    """
+    Filters time-series data (dff, t, running_speed) to specific stimulus epochs.
+
+    Args:
+        data (dict): The main data dictionary.
+        stimulus_name (str): The name of the stimulus epoch to filter for.
+
+    Returns:
+        tuple: A tuple containing the filtered arrays:
+            - t_filtered (np.ndarray)
+            - dff_filtered (np.ndarray)
+            - running_speed_filtered (np.ndarray)
+    """
+    print(f"Filtering time-series data for '{stimulus_name}' epochs...")
+    if not data.get('preprocessing_done', False):
+        logging.debug("Data preprocessing not done. Running preprocessing...")
+        preprocess_data(data)  # Ensure preprocessing is done
+        
+
+    # Identify the relevant stimulus epochs from the table
+    epoch_table = data['stim_epoch_table']
+    print(f"Total epochs available: {len(epoch_table)}")
+    print(f"Epochs columns: {epoch_table.columns.tolist()}")
+    print(f"Looking for epochs with stimulus name: {stimulus_name}")
+    print(f"Epochs with stimulus '{stimulus_name}': {epoch_table[epoch_table['stimulus'] == stimulus_name].shape[0]}  ")
+    target_epochs = epoch_table[epoch_table['stimulus'] == stimulus_name].copy()
+
+    if target_epochs.empty:
+        raise ValueError(f"Stimulus epoch '{stimulus_name}' not found in stim_epoch_table.")
+
+    # Convert start/end times to seconds for comparison
+    target_epochs["start_s"] = pd.to_numeric(target_epochs["start_time"]) / 1000.0
+    target_epochs["end_s"] = pd.to_numeric(target_epochs["end_time"]) / 1000.0
+
+    # Create a boolean mask for all time points that fall within any of the target epochs
+    time_mask = np.full(data["t"].shape, False, dtype=bool)
+    for _, row in target_epochs.iterrows():
+        time_mask |= ((data["t"] >= row["start_s"]) & (data["t"] < row["end_s"]))
+
+    # Apply the time mask to the main time-series data
+    t_filtered = data["t"][time_mask]
+    dff_filtered = data["dff"][:, time_mask]
+    running_speed_filtered = data["running_speed"][:, time_mask]
+    
+    print("Time-series filtering complete.")
+    print(f"Filtered dff shape: {dff_filtered.shape}")
+    print(f"Filtered t shape: {t_filtered.shape}")
+
+    return t_filtered, dff_filtered, running_speed_filtered
+
+
+def filter_stimulus_data(data, t_filtered):
+    """
+    Filters the stimulus frames and table to match the relevant time window.
+
+    This function identifies which stimulus frames were presented during the
+    time epochs defined by `t_filtered` and returns only those frames and
+    their corresponding metadata.
+
+    Args:
+        data (dict): The main data dictionary containing 'stim' and 'stim_table'.
+        t_filtered (np.ndarray): A 1D array of time points for the desired epoch.
+
+    Returns:
+        tuple: A tuple containing:
+            - stim_filtered (np.ndarray): The filtered stimulus movie frames.
+            - stim_table_filtered_df (pd.DataFrame): The filtered stimulus metadata table.
+    """
+    print("Filtering stimulus data to match the selected time epochs...")
+
+    # Make a copy to avoid modifying the original data dictionary in place
+    stim_table = data['stim_table'].copy()
+
+    # Get the min and max time of the filtered calcium recording
+    min_t_filtered = t_filtered.min()
+    max_t_filtered = t_filtered.max()
+
+    # Convert stim_table's 'start' and 'end' to seconds for comparison
+    stim_table["start_s"] = stim_table["start"] / 1000.0
+    stim_table["end_s"] = stim_table["end"] / 1000.0
+
+    # Filter stim_table to include only frames whose presentation times
+    # overlap with the filtered calcium recording time window.
+    stim_table_filtered_df = stim_table[
+        (stim_table["start_s"] >= min_t_filtered)
+        & (stim_table["start_s"] < max_t_filtered)
+    ].copy()
+
+    # Get the unique frame indices from the filtered table
+    unique_filtered_frames_indices = stim_table_filtered_df["frame"].unique()
+    
+    # Ensure indices are valid and within the bounds of the main stim array
+    valid_frame_indices = unique_filtered_frames_indices[
+        (unique_filtered_frames_indices >= 0)
+        & (unique_filtered_frames_indices < data["stim"].shape[0])
+    ]
+    
+    # Select the actual stimulus frames using these valid indices
+    stim_filtered = data["stim"][valid_frame_indices]
+
+    # Final cleanup of the filtered DataFrame to ensure consistency
+    stim_table_filtered_df = (
+        stim_table_filtered_df[stim_table_filtered_df["frame"].isin(valid_frame_indices)]
+        .sort_values(by="start_s")
+        .reset_index(drop=True)
+    )
+    
+    print("Stimulus filtering complete.")
+    print(f"Filtered stim_table_df shape: {stim_table_filtered_df.shape}")
+    print(f"Filtered stim shape: {stim_filtered.shape}")
+    
+    return stim_filtered, stim_table_filtered_df
