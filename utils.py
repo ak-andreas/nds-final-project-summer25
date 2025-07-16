@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 from scipy.linalg import svd
+from scipy.ndimage import center_of_mass
 
 
 logging.basicConfig(level=logging.INFO, 
@@ -893,3 +894,132 @@ def filter_stimulus_data(data, t_filtered):
     print(f"Filtered stim shape: {stim_filtered.shape}")
     
     return stim_filtered, stim_table_filtered_df
+
+
+
+    
+def plot_roi_masks_on_image(roi_masks, background_image):
+    """
+    Overlays the contours of all ROI masks on a background image.
+
+    Args:
+        roi_masks (np.ndarray): A 3D array of shape (num_neurons, height, width).
+        background_image (np.ndarray): The 2D max activity projection image.
+    """
+    print("Visualizing all ROI mask outlines...")
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Display the background image
+    ax.imshow(background_image, cmap='gray')
+
+    # Generate a set of distinct colors for the contours
+    colors = plt.cm.get_cmap('gist_rainbow', roi_masks.shape[0])
+
+    # Loop through each neuron's ROI mask and plot its contour
+    for i in range(roi_masks.shape[0]):
+        # The contour function finds the boundary of the mask
+        ax.contour(roi_masks[i, :, :], levels=[0.5], colors=[colors(i)], linewidths=1.5)
+
+    ax.set_title("Anatomical Map of All Neuron ROIs")
+    ax.set_aspect('equal')
+    ax.axis('off')
+    plt.show()
+
+
+def calculate_roi_centroids(roi_masks):
+    """
+    Calculates the center (centroid) of each neuron's ROI mask.
+
+    Args:
+        roi_masks (np.ndarray): A 3D array of shape (num_neurons, height, width).
+
+    Returns:
+        np.ndarray: A 2D array of shape (num_neurons, 2) containing the 
+                    (row, col) coordinates of each neuron's centroid.
+    """
+    print("Calculating centroids of ROI masks...")
+    num_neurons = roi_masks.shape[0]
+    centroids = np.zeros((num_neurons, 2))
+
+    for i in range(num_neurons):
+        # center_of_mass returns (row, col) which corresponds to (y, x) in plotting
+        centroids[i, :] = center_of_mass(roi_masks[i, :, :])
+        
+    print("ROI centroid calculation complete.")
+    return centroids
+
+
+def calculate_rf_centers(all_spatial_rfs):
+    """
+    Calculates the center of each spatial receptive field.
+    The center is defined as the pixel with the maximum absolute weight.
+
+    Args:
+        all_spatial_rfs (list of np.ndarray): A list of 2D spatial RF arrays.
+
+    Returns:
+        np.ndarray: A 2D array of shape (num_neurons, 2) containing the
+                    (row, col) coordinates of each RF's center.
+    """
+    print("Calculating centers of spatial receptive fields...")
+    rf_centers = []
+
+    for rf in all_spatial_rfs:
+        # Find the index of the pixel with the largest absolute value
+        max_abs_idx = np.argmax(np.abs(rf))
+        
+        # Convert the flat index to 2D (row, col) coordinates
+        center_coords = np.unravel_index(max_abs_idx, rf.shape)
+        rf_centers.append(center_coords)
+        
+    print("RF center calculation complete.")
+    return np.array(rf_centers)
+
+
+def plot_retinotopic_map(roi_centroids, rf_centers, background_image, axis_to_map='x'):
+    """
+    Generates a retinotopic map by plotting neuron locations color-coded 
+    by their receptive field center positions.
+
+    Args:
+        roi_centroids (np.ndarray): (num_neurons, 2) array of physical neuron locations.
+        rf_centers (np.ndarray): (num_neurons, 2) array of RF center locations.
+        background_image (np.ndarray): The 2D max activity projection image.
+        axis_to_map (str): Which axis of the RF to map to color ('x' or 'y').
+    """
+    if axis_to_map not in ['x', 'y']:
+        raise ValueError("axis_to_map must be 'x' or 'y'")
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    
+    # Display the max activity projection as the background
+    ax.imshow(background_image, cmap='gray')
+
+    # Get the physical locations (x, y for plotting)
+    # Note: centroid is (row, col), so we plot (col, row)
+    physical_x = roi_centroids[:, 1]
+    physical_y = roi_centroids[:, 0]
+    
+    # Determine the color values based on the chosen RF axis
+    if axis_to_map == 'x':
+        color_values = rf_centers[:, 1] # RF center x-coordinate (column)
+        cbar_label = "RF Center X-Position (pixels)"
+        title = "Retinotopic Map of Visual Field (Horizontal Axis)"
+    else: # axis_to_map == 'y'
+        color_values = rf_centers[:, 0] # RF center y-coordinate (row)
+        cbar_label = "RF Center Y-Position (pixels)"
+        title = "Retinotopic Map of Visual Field (Vertical Axis)"
+
+    # Create the scatter plot
+    scatter = ax.scatter(physical_x, physical_y, c=color_values, cmap='coolwarm', s=80,
+                         edgecolors='black', linewidth=1)
+    
+    # Add a colorbar
+    cbar = fig.colorbar(scatter, ax=ax, orientation='vertical', pad=0.02, fraction=0.046)
+    cbar.set_label(cbar_label, size=12)
+    
+    ax.set_title(title, size=14)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    
+    plt.show()
