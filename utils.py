@@ -807,8 +807,8 @@ def preprocess_data(data):
     epoch_table = epoch_table.rename(
         columns={
             epoch_table.columns[0]: "stimulus",
-            epoch_table.columns[1]: "start_time",
-            epoch_table.columns[2]: "end_time",
+            epoch_table.columns[1]: "start",
+            epoch_table.columns[2]: "end",
         }
     )
     data['stim_epoch_table'] = epoch_table
@@ -1136,3 +1136,58 @@ def visualize_all_strfs(all_rfs_spatiotemporal, delta, stim_dims, neurons_to_plo
 
     plt.tight_layout(rect=[0, 0, 1, 0.98])
     plt.show()
+
+
+
+import numpy as np
+import pandas as pd
+import numbers
+
+def isolate_sparse_epochs(data, target='locally_sparse_noise', offset_samples=0):
+    """
+    Returns a boolean mask for the time vector 't', marking only the time points
+    that fall within epochs of a specific stimulus type, using sample indices.
+
+    This function is designed to work with a pandas DataFrame for the epoch table
+    and uses the 'start' and 'end' columns as direct sample indices for masking.
+
+    Args:
+        data (dict): The main data dictionary, must contain 't' and 'stim_epoch_table'.
+        target (str): The name of the stimulus epoch to isolate.
+        offset_samples (int): An optional offset in samples (frames) to skip from 
+                              the beginning of each epoch.
+
+    Returns:
+        np.ndarray: A boolean mask with the same shape as data['t'].
+    """
+    # Ensure the input data is in the expected format
+    if 't' not in data or 'stim_epoch_table' not in data:
+        raise ValueError("Input 'data' dictionary must contain 't' and 'stim_epoch_table'.")
+    if not isinstance(data['stim_epoch_table'], pd.DataFrame):
+        raise TypeError("'stim_epoch_table' must be a pandas DataFrame.")
+
+    t = data['t']
+    epochs_df = data['stim_epoch_table']
+    # Initialize a boolean mask with all False values
+    mask = np.zeros_like(t, dtype=bool)
+    # --- Step 1: Filter the DataFrame for the target stimulus ---
+    target_epochs = epochs_df[epochs_df['stimulus'] == target].copy()
+    if target_epochs.empty:
+        print(f"Warning: No epochs found with target='{target}'. Returning an all-False mask.")
+        return mask
+
+    # --- Step 2: Create the index-based mask ---
+    # Iterate through each identified epoch and mark the corresponding indices as True.
+    for _, row in target_epochs.iterrows():
+        # Get start and end sample indices, ensuring they are integers
+        start_index = int(row['start']) + offset_samples
+        end_index = int(row['end'])
+        
+        # Check bounds to prevent errors
+        if start_index >= len(mask) or end_index > len(mask):
+            print(f"Warning: Epoch indices [{start_index}, {end_index}] are out of bounds for the time vector of length {len(mask)}. Skipping.")
+            continue
+
+        # Set the slice of the mask to True
+        mask[start_index:end_index] = True
+    return mask
