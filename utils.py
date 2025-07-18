@@ -2,7 +2,6 @@ import numpy as np
 import os
 import datetime
 import json
-import utils as U
 import logging
 
 import numpy as np
@@ -13,6 +12,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import matplotlib.patheffects as PathEffects
+import numpy as np
+import pandas as pd
 
 
 from scipy.linalg import svd
@@ -1191,3 +1192,38 @@ def isolate_sparse_epochs(data, target='locally_sparse_noise', offset_samples=0)
         # Set the slice of the mask to True
         mask[start_index:end_index] = True
     return mask
+
+def get_active_stimulus_per_timestep(stim_table, total_timesteps):
+    """
+    Creates an array mapping each timestep to the active stimulus frame ID.
+
+    Args:
+        stim_table (pd.DataFrame): DataFrame with 'frame', 'start', and 'end' columns,
+                                   where 'start' and 'end' are sample indices.
+        total_timesteps (int): The total number of timesteps in the recording
+                               (e.g., the length of data['t']).
+
+    Returns:
+        np.ndarray: An array of length `total_timesteps` where the value at each
+                    index `t` is the ID of the stimulus frame active at that time.
+                    Timesteps with no stimulus are marked as -1.
+    """
+    print("Mapping active stimulus frame to each timestep...")
+    
+    # Initialize an array to hold the frame ID for each timestep.
+    # Use -1 as a placeholder for times when no stimulus is active.
+    active_stim_per_timestep = np.full(total_timesteps, -1, dtype=int)
+    
+    # Iterate through the stimulus table to fill the array
+    for _, row in stim_table.iterrows():
+        frame_id = int(row['frame'])
+        start_index = int(row['start'])
+        end_index = int(row['end'])
+        
+        # Check for valid indices to prevent errors
+        if start_index < total_timesteps:
+            # The end_index can be beyond the array length, so we clip it
+            active_stim_per_timestep[start_index:min(end_index, total_timesteps)] = frame_id
+            
+    print("Mapping complete.")
+    return active_stim_per_timestep
