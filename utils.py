@@ -623,13 +623,14 @@ def fit_spatiotemporal_rf(neuron_spikes, flattened_stim, delta):
         
     return w_hat_neuron
 
-def fit_all_neurons_rfs(binned_spikes, flattened_stim, delta):
+def fit_all_neurons_rfs(binned_spikes, flattened_stim, delta, selected_neurons=None):
     """Fits receptive fields for all neurons."""
     print("\nStep 3 & 4: Fitting spatio-temporal receptive fields for all neurons...")
     num_neurons = binned_spikes.shape[0]
     all_neuron_rfs = []
-
-    for i in range(num_neurons):
+    if selected_neurons is None:
+        selected_neurons = range(num_neurons)
+    for i in selected_neurons:
         print(f"  Fitting Neuron {i+1}/{num_neurons}...")
         neuron_spikes = binned_spikes[i, :]
         w_hat = fit_spatiotemporal_rf(neuron_spikes, flattened_stim, delta)
