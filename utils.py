@@ -471,7 +471,103 @@ def deriv_negloglike_lnp(w, c, s, dt=1.0, R=1.0):
     grad = s @ (rates - c)
     return grad
 
-# --- Refactored Data Preparation and Fitting Functions ---
+def bin_spikes_to_frames_from_active_stim_per_timestep(inferred_spikes, active_stim_per_timestep):
+    """
+    Bins inferred spikes using a timestep-to-frame_id mapping array,
+    preserving the temporal order of stimulus presentations.
+
+    Args:
+        inferred_spikes (np.ndarray): Shape (num_neurons, num_timesteps).
+        active_stim_per_timestep (np.ndarray): Shape (num_timesteps,). Maps each
+                                               timestep to a frame ID (-1 for inactive).
+
+    Returns:
+        tuple: A tuple containing:
+            - binned_spikes (np.ndarray): The binned spikes, shape (num_neurons, num_presentations).
+            - presented_frame_ids (np.ndarray): The frame IDs for each presentation, in order.
+    """
+    print("Binning spikes using timestep-to-frame mapping array...")
+    num_neurons, num_timesteps = inferred_spikes.shape
+    
+    # --- Step 1: Identify the start of each stimulus presentation ---
+    # A presentation starts when the active_stim ID changes from the previous
+    # timestep, and the new ID is not -1 (inactive).
+    
+    # Find all points where the stimulus ID changes
+    is_different_from_prev = np.concatenate(([True], np.diff(active_stim_per_timestep) != 0))
+    
+    # Filter for only the active stimulus timesteps
+    is_stim_active = active_stim_per_timestep != -1
+    
+    # The start of a presentation is where a stimulus is active AND it's a new frame
+    presentation_start_indices = np.where(is_stim_active & is_different_from_prev)[0]
+    
+    if len(presentation_start_indices) == 0:
+        print("Warning: No active stimulus frames found in the mapping array.")
+        return np.array([[]] * num_neurons), np.array([])
+
+    # --- Step 2: Get the corresponding frame IDs and bin the spikes ---
+    
+    # The frame ID for each presentation is the value at its start index
+    presented_frame_ids = active_stim_per_timestep[presentation_start_indices]
+    
+    # The end index of a presentation is the start index of the next one
+    presentation_end_indices = np.concatenate((presentation_start_indices[1:], [num_timesteps]))
+    
+    num_presentations = len(presentation_start_indices)
+    binned_spikes = np.zeros((num_neurons, num_presentations))
+    
+    # Sum the spikes within each presentation window
+    for i in range(num_presentations):
+        start = presentation_start_indices[i]
+        end = presentation_end_indices[i]
+        
+        binned_spikes[:, i] = np.sum(inferred_spikes[:, start:end], axis=1)
+        
+    print(f"Binning complete. Binned spikes shape: {binned_spikes.shape}")
+    return binned_spikes, presented_frame_ids
+
+
+
+def prepare_stimulus_matrix_from_ids(presented_frame_ids, full_stim_movie):
+    """
+    Creates a flattened stimulus matrix from a list of frame IDs, preserving
+    the temporal order of presentation.
+
+    Args:
+        presented_frame_ids (np.ndarray): A 1D array containing the sequence of
+                                          frame IDs that were presented.
+        full_stim_movie (np.ndarray): The complete stimulus movie, shape
+                                      (total_unique_frames, height, width).
+
+    Returns:
+        tuple: A tuple containing:
+            - flattened_stim (np.ndarray): The design matrix, shape (num_pixels, num_presentations).
+            - stim_h (int): The height of the stimulus frames.
+            - stim_w (int): The width of the stimulus frames.
+    """
+    print("Preparing stimulus matrix from frame IDs...")
+
+    # --- Step 1: Select the presented frames in the correct order ---
+    # This is a simple but powerful NumPy indexing operation.
+    presented_frames = full_stim_movie[presented_frame_ids]
+    
+    # --- Step 2: Get dimensions ---
+    num_presentations, stim_h, stim_w = presented_frames.shape
+    num_pixels = stim_h * stim_w
+    
+    # --- Step 3: Flatten and transpose the matrix ---
+    # We reshape to (num_presentations, num_pixels) and then transpose to get
+    # the final shape (num_pixels, num_presentations) for the model.
+    flattened_stim = presented_frames.reshape(num_presentations, num_pixels).T
+    
+    print(f"Stimulus matrix preparation complete. Shape: {flattened_stim.shape}")
+    return flattened_stim, stim_h, stim_w
+
+
+
+
+
 
 def bin_spikes_to_frames(inferred_spikes, t_filtered, stim_table_filtered_df):
     """Bins continuous inferred spike data into counts per stimulus frame."""
@@ -556,6 +652,81 @@ def extract_spatial_rfs_svd(all_neuron_rfs, stim_height, stim_width):
     print(f"SVD analysis complete. Extracted {len(all_spatial_rfs)} spatial receptive fields.")
     return all_spatial_rfs
 
+
+
+# You can add this function to your utils.py file
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.linalg import svd
+
+
+def visualize_neuron_strf_details(neuron_id, spatiotemporal_rf, delta, stim_dims):
+    """
+    Creates a detailed visualization for a single neuron, showing the full
+    spatio-temporal receptive field (STRF) across all lags and its SVD decomposition.
+
+    Args:
+        neuron_id (int or str): The identifier for the neuron.
+        spatiotemporal_rf (np.ndarray): The (num_pixels, num_lags) STRF.
+        delta (list or np.ndarray): The time lags used in the analysis.
+        stim_dims (tuple): The (height, width) of the stimulus.
+    """
+    print(f"\nGenerating detailed STRF visualization for Neuron {neuron_id}...")
+    
+    num_lags = len(delta)
+    stim_h, stim_w = stim_dims
+
+    # --- Create the figure with two rows of subplots ---
+    fig = plt.figure(figsize=(num_lags * 2.5, 6))
+    gs = fig.add_gridspec(2, num_lags)
+    fig.suptitle(f"Detailed Analysis for Neuron {neuron_id}", fontsize=16)
+
+    # --- Top Row: Full Spatio-Temporal Receptive Field (STRF) ---
+    # Find a common color scale for all lags in the top row
+    vlim_strf = np.max(np.abs(spatiotemporal_rf))
+    
+    for i, lag in enumerate(delta):
+        ax = fig.add_subplot(gs[0, i])
+        rf_at_lag = spatiotemporal_rf[:, i].reshape(stim_h, stim_w)
+        ax.imshow(rf_at_lag, cmap='bwr', vmin=-vlim_strf, vmax=vlim_strf)
+        ax.set_title(f"STRF @ Lag {lag}")
+        ax.axis('off')
+
+    # --- Bottom Row: SVD Decomposition ---
+    
+    # Perform SVD to get the separated components
+    w_centered = spatiotemporal_rf - spatiotemporal_rf.mean(axis=1, keepdims=True)
+    U, _, Vt = svd(w_centered, full_matrices=False)
+    
+    spatial_rf = U[:, 0].reshape(stim_h, stim_w)
+    temporal_rf = Vt[0, :]
+    
+    # Sign correction for consistent plotting
+    if np.abs(np.min(spatial_rf)) > np.abs(np.max(spatial_rf)):
+        spatial_rf *= -1
+        temporal_rf *= -1
+
+    # Plot Separated Spatial RF (takes up first half of bottom row)
+    ax_spatial = fig.add_subplot(gs[1, 0:num_lags//2])
+    vlim_spatial = np.max(np.abs(spatial_rf))
+    ax_spatial.imshow(spatial_rf, cmap='bwr', vmin=-vlim_spatial, vmax=vlim_spatial)
+    ax_spatial.set_title("Separated Spatial RF")
+    ax_spatial.axis('off')
+
+    # Plot Separated Temporal Kernel (takes up second half of bottom row)
+    ax_temporal = fig.add_subplot(gs[1, num_lags//2:])
+    ax_temporal.plot(delta, temporal_rf, 'o-')
+    ax_temporal.axhline(0, color='grey', linestyle='--')
+    ax_temporal.set_title("Separated Temporal Kernel")
+    ax_temporal.set_xlabel("Lag (frames)")
+    ax_temporal.set_ylabel("Weight")
+    ax_temporal.grid(True, alpha=0.3)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
+    
+    
 def visualize_neuron_rf(neuron_id, spatiotemporal_rf, spatial_rf, delta):
     """Visualizes the analysis results for a single neuron."""
     print(f"\nVisualizing results for an example neuron (Neuron {neuron_id})...")
