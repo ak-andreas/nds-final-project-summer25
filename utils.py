@@ -639,7 +639,10 @@ def extract_spatial_rfs_svd(all_neuron_rfs, stim_height, stim_width):
 
 
 
-def visualize_neuron_strf_details(neuron_id, spatiotemporal_rf, delta, stim_dims):
+def visualize_neuron_strf_details(neuron_id, 
+                                    spatiotemporal_rf, 
+                                    delta, 
+                                    stim_dims):
     """
     Creates a detailed visualization for a single neuron, showing the full
     spatio-temporal receptive field (STRF) across all lags and its SVD decomposition.
