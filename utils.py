@@ -1,20 +1,15 @@
 import numpy as np
+import pandas as pd
+import numbers
+import numpy as np
 import os
 import datetime
 import json
 import logging
 
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-import logging
-import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import matplotlib.patheffects as PathEffects
-import numpy as np
-import pandas as pd
-
+import matplotlib.pyplot as plt
 
 from scipy.linalg import svd
 from scipy.ndimage import center_of_mass
@@ -95,8 +90,7 @@ def get_npy_metadata(file_path):
         # This is robust across versions but can be memory-intensive for huge files.
         with open(file_path, "rb") as f:
             data = np.load(
-                f, allow_pickle=True
-            )  # allow_pickle=True is needed for object arrays
+                f, allow_pickle=True)  
 
         # Handle the case where the loaded data is a dictionary-like object from .npz
         if isinstance(data, np.lib.npyio.NpzFile) or isinstance(data, dict):
@@ -443,16 +437,6 @@ import scipy.optimize as opt
 import matplotlib.pyplot as plt
 from scipy.special import gammaln
 
-# Assume the following variables are pre-loaded and available in your environment
-# from the previous data filtering and spike inference steps:
-#
-# inferred_spikes:        (np.ndarray) Shape: (num_neurons, num_time_points)
-# stim_filtered:          (np.ndarray) Shape: (num_stim_frames, 16, 28)
-# stim_table_filtered_df: (pd.DataFrame) DataFrame with 'start_s' and 'end_s' columns
-# t_filtered:             (np.ndarray) Shape: (num_time_points,)
-
-# --- MLE Model Functions (from Coding Lab 5) ---
-
 def negloglike_lnp(w, c, s, dt=1.0, R=1.0):
     """Implements the negative log-likelihood of the LNP model."""
     w = w.ravel()
@@ -653,13 +637,6 @@ def extract_spatial_rfs_svd(all_neuron_rfs, stim_height, stim_width):
     print(f"SVD analysis complete. Extracted {len(all_spatial_rfs)} spatial receptive fields.")
     return all_spatial_rfs
 
-
-
-# You can add this function to your utils.py file
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.linalg import svd
 
 
 def visualize_neuron_strf_details(neuron_id, spatiotemporal_rf, delta, stim_dims):
@@ -1312,9 +1289,6 @@ def visualize_all_strfs(all_rfs_spatiotemporal, delta, stim_dims, neurons_to_plo
 
 
 
-import numpy as np
-import pandas as pd
-import numbers
 
 def isolate_sparse_epochs(data, target='locally_sparse_noise', offset_samples=0):
     """
