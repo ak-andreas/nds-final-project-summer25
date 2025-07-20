@@ -17,6 +17,12 @@ from scipy.ndimage import center_of_mass
 import os
 import glob
 
+import numpy as np
+import pandas as pd
+from scipy.optimize import curve_fit
+from tqdm.auto import tqdm 
+from joblib import Parallel, delayed # Import tools for parallel processing
+
 
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -614,11 +620,44 @@ def fit_all_neurons_rfs(binned_spikes, flattened_stim, delta, selected_neurons=N
     all_neuron_rfs = []
     if selected_neurons is None:
         selected_neurons = range(num_neurons)
-    for i in selected_neurons:
-        print(f"  Fitting Neuron {i+1}/{num_neurons}...")
+    for i in tqdm(selected_neurons, desc="Fitting neurons"):
+        print(f"Fitting Neuron Idx {i} Total: {num_neurons}...")
         neuron_spikes = binned_spikes[i, :]
         w_hat = fit_spatiotemporal_rf(neuron_spikes, flattened_stim, delta)
         all_neuron_rfs.append(w_hat)
+        
+    print("Fitting complete.")
+    return all_neuron_rfs
+
+def fit_all_neurons_rfs_parallel(binned_spikes, flattened_stim, delta, selected_neurons=None, n_jobs=-1):
+    """
+    Fits receptive fields for all neurons in parallel using Joblib.
+    
+    Args:
+        binned_spikes (np.array): Array of spike counts (neurons x time).
+        flattened_stim (np.array): Stimulus data (pixels x time).
+        delta (list or np.array): List of time lags to test.
+        selected_neurons (list or np.array, optional): Indices of neurons to fit. 
+                                                     Defaults to all neurons.
+        n_jobs (int, optional): The number of CPU cores to use. 
+                                -1 means use all available cores. 
+                                1 means use only one core (no parallelism).
+                                Defaults to -1.
+
+    Returns:
+        list: A list of fitted receptive fields (w_hat) for each neuron.
+    """
+    print(f"\nStep 3 & 4: Fitting spatio-temporal receptive fields in parallel using {n_jobs if n_jobs > 0 else 'all'} cores...")
+    
+    num_neurons = binned_spikes.shape[0]
+
+    if selected_neurons is None:
+        selected_neurons = range(num_neurons)
+        
+    all_neuron_rfs = Parallel(n_jobs=n_jobs)(
+        delayed(fit_spatiotemporal_rf)(binned_spikes[i, :], flattened_stim, delta) 
+        for i in tqdm(selected_neurons, desc="Fitting neurons")
+    )
         
     print("Fitting complete.")
     return all_neuron_rfs
@@ -1376,3 +1415,115 @@ def get_active_stimulus_per_timestep(stim_table, total_timesteps):
             
     print("Mapping complete.")
     return active_stim_per_timestep
+
+
+def gaussian_2d(xy_mesh, amplitude, x0, y0, sigma_x, sigma_y, theta, offset):
+    """
+    A 2D Gaussian function for fitting.
+    
+    Args:
+        xy_mesh (tuple): A tuple of x and y meshgrid coordinates.
+        amplitude (float): The amplitude of the Gaussian.
+        x0, y0 (float): The center coordinates.
+        sigma_x, sigma_y (float): The standard deviations (size).
+        theta (float): The rotation angle.
+        offset (float): The baseline offset.
+
+    Returns:
+        np.ndarray: The flattened 2D Gaussian.
+    """
+    x, y = xy_mesh
+    x0 = float(x0)
+    y0 = float(y0)
+    a = (np.cos(theta)**2)/(2*sigma_x**2) + (np.sin(theta)**2)/(2*sigma_y**2)
+    b = -(np.sin(2*theta))/(4*sigma_x**2) + (np.sin(2*theta))/(4*sigma_y**2)
+    c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
+    g = offset + amplitude * np.exp( - (a*((x-x0)**2) + 2*b*(x-x0)*(y-y0) + c*((y-y0)**2)))
+    return g.ravel()
+
+def fit_2d_gaussian_to_rf(rf_map):
+    """
+    Fits a 2D Gaussian to a spatial receptive field map.
+
+    Args:
+        rf_map (np.ndarray): The 2D spatial RF.
+
+    Returns:
+        tuple: A tuple containing:
+            - params (list or None): The optimal parameters [amp, x0, y0, sx, sy, theta, offset].
+            - r_squared (float or None): The R-squared value indicating goodness-of-fit.
+    """
+    h, w = rf_map.shape
+    x = np.arange(w)
+    y = np.arange(h)
+    x, y = np.meshgrid(x, y)
+
+    # Initial guess for the parameters
+    initial_guess = [
+        rf_map.max(),      # amplitude
+        w/2,               # x0
+        h/2,               # y0
+        w/4,               # sigma_x
+        h/4,               # sigma_y
+        0,                 # theta
+        0                  # offset
+    ]
+
+    try:
+        # Use curve_fit to find the best parameters
+        popt, pcov = curve_fit(gaussian_2d, (x, y), rf_map.ravel(), p0=initial_guess)
+        
+        # Calculate R-squared for goodness-of-fit
+        residuals = rf_map.ravel() - gaussian_2d((x, y), *popt)
+        ss_res = np.sum(residuals**2)
+        ss_tot = np.sum((rf_map.ravel() - np.mean(rf_map.ravel()))**2)
+        r_squared = 1 - (ss_res / ss_tot)
+        
+        return popt, r_squared
+    except RuntimeError:
+        # If the fit fails to converge, return None
+        return None, None
+
+def quantify_all_rfs(all_spatial_rfs):
+    """
+    Quantifies the localization of all spatial RFs by fitting 2D Gaussians.
+
+    Args:
+        all_spatial_rfs (list of np.ndarray): A list of 2D spatial RFs.
+
+    Returns:
+        pd.DataFrame: A DataFrame with quantification metrics for each neuron,
+                      including the fitted RF center coordinates.
+    """
+    print("Quantifying localization for all spatial RFs...")
+    results = []
+    for i, rf in enumerate(all_spatial_rfs):
+        params, r_squared = fit_2d_gaussian_to_rf(rf)
+        
+        if params is not None:
+            # Calculate RF size as the geometric mean of the sigmas
+            rf_size = np.sqrt(abs(params[3] * params[4]))
+            results.append({
+                'neuron_id': i,
+                'r_squared': r_squared,
+                'rf_size': rf_size,
+                'amplitude': params[0],
+                'rf_center_x': params[1], # The fitted x-center of the blob
+                'rf_center_y': params[2]  # The fitted y-center of the blob
+            })
+        else:
+            results.append({
+                'neuron_id': i,
+                'r_squared': 0, # Assign 0 if fit failed
+                'rf_size': np.nan,
+                'amplitude': 0,
+                'rf_center_x': np.nan,
+                'rf_center_y': np.nan
+            })
+            
+    print("Quantification complete.")
+    df = pd.DataFrame(results)
+    df.set_index('neuron_id', inplace=True)
+    df.sort_values(by='r_squared', ascending=False, inplace=True)
+    df.reset_index(inplace=True)
+    return df 
