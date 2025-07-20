@@ -20,6 +20,9 @@ import glob
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
+from tqdm.auto import tqdm 
+from joblib import Parallel, delayed # Import tools for parallel processing
+
 
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -617,11 +620,44 @@ def fit_all_neurons_rfs(binned_spikes, flattened_stim, delta, selected_neurons=N
     all_neuron_rfs = []
     if selected_neurons is None:
         selected_neurons = range(num_neurons)
-    for i in selected_neurons:
-        print(f"  Fitting Neuron {i+1}/{num_neurons}...")
+    for i in tqdm(selected_neurons, desc="Fitting neurons"):
+        print(f"Fitting Neuron Idx {i} Total: {num_neurons}...")
         neuron_spikes = binned_spikes[i, :]
         w_hat = fit_spatiotemporal_rf(neuron_spikes, flattened_stim, delta)
         all_neuron_rfs.append(w_hat)
+        
+    print("Fitting complete.")
+    return all_neuron_rfs
+
+def fit_all_neurons_rfs_parallel(binned_spikes, flattened_stim, delta, selected_neurons=None, n_jobs=-1):
+    """
+    Fits receptive fields for all neurons in parallel using Joblib.
+    
+    Args:
+        binned_spikes (np.array): Array of spike counts (neurons x time).
+        flattened_stim (np.array): Stimulus data (pixels x time).
+        delta (list or np.array): List of time lags to test.
+        selected_neurons (list or np.array, optional): Indices of neurons to fit. 
+                                                     Defaults to all neurons.
+        n_jobs (int, optional): The number of CPU cores to use. 
+                                -1 means use all available cores. 
+                                1 means use only one core (no parallelism).
+                                Defaults to -1.
+
+    Returns:
+        list: A list of fitted receptive fields (w_hat) for each neuron.
+    """
+    print(f"\nStep 3 & 4: Fitting spatio-temporal receptive fields in parallel using {n_jobs if n_jobs > 0 else 'all'} cores...")
+    
+    num_neurons = binned_spikes.shape[0]
+
+    if selected_neurons is None:
+        selected_neurons = range(num_neurons)
+        
+    all_neuron_rfs = Parallel(n_jobs=n_jobs)(
+        delayed(fit_spatiotemporal_rf)(binned_spikes[i, :], flattened_stim, delta) 
+        for i in tqdm(selected_neurons, desc="Fitting neurons")
+    )
         
     print("Fitting complete.")
     return all_neuron_rfs
