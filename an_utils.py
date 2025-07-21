@@ -629,7 +629,7 @@ def fit_all_neurons_rfs(binned_spikes, flattened_stim, delta, selected_neurons=N
     print("Fitting complete.")
     return all_neuron_rfs
 
-def fit_all_neurons_rfs_parallel(binned_spikes, flattened_stim, delta, selected_neurons=None, n_jobs=-1):
+def fit_all_neurons_rfs_parallel(binned_spikes, flattened_stim, delta, selected_neurons=None, n_jobs=3):
     """
     Fits receptive fields for all neurons in parallel using Joblib.
     
